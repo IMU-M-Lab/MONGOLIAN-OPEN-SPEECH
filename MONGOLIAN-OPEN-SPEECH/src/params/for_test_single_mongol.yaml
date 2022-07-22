@@ -1,0 +1,431 @@
+seed: mongol
+__set_seed: !apply:torch.manual_seed [777]
+use_aux: False
+
+model_name: Mongon_NO_pretrained
+skip_prep: False
+data_folder: /home/alzhu/WuYiHao/mogon/5k # 修改
+output_folder: !ref /data01/WuYiHao/output/<model_name>/<seed> # 修改
+
+train_data: !ref <data_folder>/train_mogon_datalist.list
+cv_data: !ref <data_folder>/dev_mogon_datalist.list
+test_data: !ref <data_folder>/test_mogon_datalist.list
+
+dict_dir: !ref <data_folder>/mon_model.dic
+
+cmvn_file: !ref /data01/WuYiHao/TVQA_file/global_cmvn
+bpe_model: !ref <data_folder>/mon_model.model
+
+#data_folder: /data01/WYH/Violin/Violin_file # 修改
+#output_folder: !ref /data01/WYH/output/<model_name>/<seed> # 修改
+#
+#train_data: !ref <data_folder>/train_set.txt1
+#cv_data: !ref <data_folder>/test_set.txt1
+#test_data: !ref <data_folder>/test_clean/test_set.txt1
+#
+#dict_dir: !ref /data01/WYH/pre_trained_model/words.txt
+#cmvn_file: !ref <data_folder>/cmvn_info_all
+
+#data_folder: /home/alzhu/WuYiHao/wenet-e2e/examples/librispeech/s0/data# 修改
+#output_folder: !ref /data01/WYH/output/<model_name>/<seed> # 修改
+#
+#train_data: !ref <data_folder>/train_960/data.list
+#cv_data: !ref <data_folder>/test_clean/data.list
+#test_data: !ref <data_folder>/test_clean/data.list
+#
+#dict_dir: !ref <data_folder>/dict/lang_char.txt
+#cmvn_file: !ref <data_folder>/train_960/global_cmvn
+
+use_ckpt: False  # False for retrain
+checkpoint: !ref <output_folder>/latest.pt # 'latest.pt' for latest checkpoint
+ckpt_interval_epoch: 1 # save checkpoint every N min
+
+tensorboard: !ref <output_folder>/tensorboard # tensorboard dir
+
+pin_memory: True
+use_amp: False
+num_workers: 0
+prefetch: 100   # new
+# ddp
+ddp:
+    world_size: 1
+    dist_backend: nccl      # ['nccl', 'gloo']
+    init_method: !ref file:///home/ZhangHui/lx/code/asr/asr_text/<output_folder>/ddp_init
+
+accum_grad: 4
+
+# use raw_wav or kaldi feature
+raw_wav: true  # deprecated
+data_type: 'raw' # ['raw', 'shard']
+
+# bpe_model:  # type str, bpe model for english part
+
+grad_clip: 5
+max_epoch: 300
+log_interval: 100
+
+optim: adam
+optim_conf:
+    lr: 0.002
+scheduler: warmuplr     # pytorch v1.1.0+ required
+scheduler_conf:
+    warmup_steps: 25000
+
+# network architecture
+model_init_conf:
+    model: !name:model.asr_model.ASRModel
+    raw_wav: !ref <raw_wav>
+    cmvn_file: !ref <cmvn_file>
+    encoder_type: !ref <encoder>
+    decoder_type: !ref <decoder>
+    encoder_conf: !ref <encoder_conf>
+    decoder_conf: !ref <decoder_conf>
+    model_conf: !ref <model_conf>
+    finetune: !ref <finetune>
+    pretrain: True
+    pretrain_path: /data01/WuYiHao/output/TVQA_训练/pre_finetune/0.pt
+
+
+finetune:
+  attention_heads: 4
+  dropout_rate: 0.1
+  linear_units: 2048
+  num_blocks: 3
+  positional_dropout_rate: 0.1
+  self_attention_dropout_rate: 0.1
+  src_attention_dropout_rate: 0.1
+
+# encoder related
+encoder: conformer
+encoder_conf:
+    output_size: 256    # dimension of attention
+    attention_heads: 4
+    linear_units: 2048  # the number of units of position-wise feed forward
+    num_blocks: 12      # the number of encoder blocks
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    attention_dropout_rate: 0.0
+    input_layer: conv2d # encoder input type, you can chose conv2d, conv2d6 and conv2d8
+    normalize_before: true
+    cnn_module_kernel: 15
+    use_cnn_module: True
+    activation_type: 'swish'
+    pos_enc_layer_type: 'rel_pos'
+    selfattention_layer_type: 'rel_selfattn'
+
+# decoder related
+decoder: transformer
+decoder_conf:
+    attention_heads: 4
+    linear_units: 2048
+    num_blocks: 6
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    self_attention_dropout_rate: 0.0
+    src_attention_dropout_rate: 0.0
+
+# hybrid CTC/attention
+model_conf:
+    ctc_weight: 0.3
+    lsm_weight: 0.1     # label smoothing option
+    length_normalized_loss: false
+
+
+# feature extraction
+collate_conf:
+    # waveform level config
+    wav_distortion_conf:
+        wav_dither: 0.1
+        wav_distortion_rate: 0.0
+        distortion_methods: []
+    speed_perturb: true
+    feature_extraction_conf:
+        feature_type: 'fbank'
+        mel_bins: 80
+        frame_shift: 10
+        frame_length: 25
+        using_pitch: false
+    # spec level config
+    # spec_swap: false
+    feature_dither: 0.0 # add dither [-feature_dither,feature_dither] on fbank feature
+    spec_aug: true
+    spec_aug_conf:
+        warp_for_time: False
+        num_t_mask: 2
+        num_f_mask: 2
+        max_t: 50
+        max_f: 10
+        max_w: 80
+
+
+# dataset related
+dataset_conf:
+    filter_conf:
+        max_length: 40960
+        min_length: 0
+        token_max_length: 200
+        token_min_length: 1
+    resample_conf:
+        resample_rate: 16000
+    speed_perturb: true
+    fbank_conf:
+        num_mel_bins: 80
+        frame_shift: 10
+        frame_length: 25
+        dither: 0.1
+    spec_aug: true
+    spec_aug_conf:
+        num_t_mask: 2
+        num_f_mask: 2
+        max_t: 50
+        max_f: 10
+    shuffle: true
+    shuffle_conf:
+        shuffle_size: 1500
+    sort: true
+    sort_conf:
+        sort_size: 500  # sort_size should be less than shuffle_size
+    batch_conf:
+        batch_type: 'static' # static or dynamic
+        batch_size: 1
+
+#seed: 2
+#__set_seed: !apply:torch.manual_seed [777]
+#
+#model_name: test
+#skip_prep: False
+#
+#data_folder: /home/alzhu/WuYiHao/wenet-e2e/examples/librispeech/s0/data # 修改
+#output_folder: !ref /data01/WYH/output/<model_name>/<seed> # 修改
+#
+#train_data: !ref <data_folder>/train_960/data.list
+#cv_data: !ref <data_folder>/dev/data.list
+#test_data: !ref <data_folder>/test_clean/data.list
+#
+#dict_dir: !ref /home/alzhu/WuYiHao/wenet-e2e/examples/librispeech/s0/data/lang_char/train_960_unigram5000_units.txt
+#cmvn_file: !ref <data_folder>/train_960/global_cmvn
+#
+#use_ckpt: True  # False for retrain
+#checkpoint: !ref <output_folder>/latest.pt # 'latest.pt' for latest checkpoint
+#ckpt_interval_epoch: 1 # save checkpoint every N min
+#
+#tensorboard: !ref <output_folder>/tensorboard # tensorboard dir
+#
+#pin_memory: True
+#use_amp: False
+#num_workers: 8
+#prefetch: 100   # new
+## ddp
+#ddp:
+#    world_size: 1
+#    dist_backend: nccl      # ['nccl', 'gloo']
+#    init_method: !ref file:<output_folder>/ddp_init
+#
+#accum_grad: 4
+#
+## use raw_wav or kaldi feature
+##raw_wav: true  # deprecated
+#data_type: 'raw' # ['raw', 'shard']
+#
+## bpe_model:  # type str, bpe model for english part
+#
+##grad_clip: 5
+##max_epoch: 240
+##log_interval: 100
+##
+##optim: adam
+##optim_conf:
+##    lr: 0.002
+##scheduler: warmuplr     # pytorch v1.1.0+ required
+##scheduler_conf:
+##    warmup_steps: 25000
+#
+## network architecture
+#model_init_conf:
+#    model: !name:model.asr_model.ASRModel
+#    raw_wav: !ref <raw_wav>
+#    cmvn_file: !ref <cmvn_file>
+#    encoder_type: !ref <encoder>
+#    decoder_type: !ref <decoder>
+#    encoder_conf: !ref <encoder_conf>
+#    decoder_conf: !ref <decoder_conf>
+#    model_conf: !ref <model_conf>
+#
+## encoder related
+##encoder: conformer
+##encoder_conf:
+##    output_size: 256    # dimension of attention
+##    attention_heads: 4
+##    linear_units: 2048  # the number of units of position-wise feed forward
+##    num_blocks: 12      # the number of encoder blocks
+##    dropout_rate: 0.1
+##    positional_dropout_rate: 0.1
+##    attention_dropout_rate: 0.0
+##    input_layer: conv2d # encoder input type, you can chose conv2d, conv2d6 and conv2d8
+##    normalize_before: true
+##    cnn_module_kernel: 15
+##    use_cnn_module: True
+##    activation_type: 'swish'
+##    pos_enc_layer_type: 'rel_pos'
+##    selfattention_layer_type: 'rel_selfattn'
+#
+## decoder related
+##decoder: transformer
+##decoder_conf:
+##    attention_heads: 4
+##    linear_units: 2048
+##    num_blocks: 6
+##    dropout_rate: 0.1
+##    positional_dropout_rate: 0.1
+##    self_attention_dropout_rate: 0.0
+##    src_attention_dropout_rate: 0.0
+#
+## hybrid CTC/attention
+##model_conf:
+##    ctc_weight: 0.3
+##    lsm_weight: 0.1     # label smoothing option
+##    length_normalized_loss: false
+#
+## feature extraction
+##collate_conf:
+##    # waveform level config
+##    wav_distortion_conf:
+##        wav_dither: 0.1
+##        wav_distortion_rate: 0.0
+##        distortion_methods: []
+##    speed_perturb: true
+##    feature_extraction_conf:
+##        feature_type: 'fbank'
+##        mel_bins: 80
+##        frame_shift: 10
+##        frame_length: 25
+##        using_pitch: false
+##    # spec level config
+##    # spec_swap: false
+##    feature_dither: 0.0 # add dither [-feature_dither,feature_dither] on fbank feature
+##    spec_aug: true
+##    spec_aug_conf:
+##        warp_for_time: False
+##        num_t_mask: 2
+##        num_f_mask: 2
+##        max_t: 50
+##        max_f: 10
+##        max_w: 80
+#
+#
+##dataset related
+#dataset_conf:
+#    filter_conf:
+#        max_length: 40960
+#        min_length: 0
+#        token_max_length: 200
+#        token_min_length: 1
+#    resample_conf:
+#        resample_rate: 16000
+#    speed_perturb: true
+#    fbank_conf:
+#        num_mel_bins: 80
+#        frame_shift: 10
+#        frame_length: 25
+#        dither: 0.1
+#    spec_aug: true
+#    spec_aug_conf:
+#        num_t_mask: 2
+#        num_f_mask: 2
+#        max_t: 50
+#        max_f: 10
+#    shuffle: true
+#    shuffle_conf:
+#        shuffle_size: 1500
+#    sort: true
+#    sort_conf:
+#        sort_size: 500  # sort_size should be less than shuffle_size
+#    batch_conf:
+#        batch_type: 'static' # static or dynamic
+#        batch_size: 16
+#
+#
+#
+#collate_conf:
+#  feature_dither: 0.0
+#  feature_extraction_conf:
+#    feature_type: fbank
+#    frame_length: 25
+#    frame_shift: 10
+#    mel_bins: 80
+#    using_pitch: false
+#  spec_aug: true
+#  spec_aug_conf:
+#    max_f: 10
+#    max_t: 50
+#    max_w: 80
+#    num_f_mask: 2
+#    num_t_mask: 2
+#    warp_for_time: false
+#  speed_perturb: true
+#  wav_distortion_conf:
+#    distortion_methods: []
+#    wav_distortion_rate: 0.0
+#    wav_dither: 1.0
+##dataset_conf:
+##  fbank_conf:
+##    num_mel_bins: 80
+##    frame_shift: 10
+##    frame_length: 25
+##    dither: 0.1
+##  batch_size: 10
+##  batch_type: static
+##  max_length: 40960
+##  min_length: 0
+##  sort: true
+#decoder: bitransformer
+#decoder_conf:
+#  attention_heads: 8
+#  dropout_rate: 0.1
+#  linear_units: 2048
+#  num_blocks: 3
+#  positional_dropout_rate: 0.1
+#  r_num_blocks: 3
+#  self_attention_dropout_rate: 0.1
+#  src_attention_dropout_rate: 0.1
+#encoder: conformer
+#encoder_conf:
+#  activation_type: swish
+#  attention_dropout_rate: 0.0
+#  attention_heads: 4
+#  causal: true
+#  cnn_module_kernel: 15
+#  cnn_module_norm: layer_norm
+#  dropout_rate: 0.1
+#  input_layer: conv2d
+#  linear_units: 2048
+#  normalize_before: true
+#  num_blocks: 12
+#  output_size: 256
+#  pos_enc_layer_type: rel_pos
+#  positional_dropout_rate: 0.1
+#  selfattention_layer_type: rel_selfattn
+#  use_cnn_module: true
+#  use_dynamic_chunk: true
+#grad_clip: 5
+#input_dim: 80
+#is_json_cmvn: true
+#log_interval: 100
+#max_epoch: 120
+#model_conf:
+#  ctc_weight: 0.3
+#  length_normalized_loss: false
+#  lsm_weight: 0.1
+#  reverse_weight: 0.5
+#
+#
+#
+#
+#optim: adam
+#optim_conf:
+#  lr: 0.001
+#output_dim: 5002
+#raw_wav: true
+#scheduler: warmuplr
+#scheduler_conf:
+#  warmup_steps: 25000

@@ -1,0 +1,8 @@
+pyyaml>=5.1
+hyperpyyaml
+tensorboardX
+torchaudio
+numpy
+Pillow
+typeguard
+tqdm
